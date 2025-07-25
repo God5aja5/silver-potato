@@ -222,37 +222,40 @@ def generate_image():
     # Generate dynamic values
     user = generate_user_agent()
     headers = {
-        'authority': 'api.arting.ai',
-        'accept': 'application/json',
-        'accept-language': 'en-US,en;q=0.9',
-        'content-type': 'application/json',
-        'origin': 'https://arting.ai',
-        'referer': 'https://arting.ai/',
-        'sec-ch-ua': '"Chromium";v="137", "Not/A)Brand";v="24"',
-        'sec-ch-ua-mobile': '?1',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': user,
-    }
-
+    'authority': 'api.arting.ai',
+    'accept': 'application/json',
+    'accept-language': 'en-US,en;q=0.9',
+    'authorization': '3a2bc631-e77b-4a85-a954-ba9e7bab07e6',
+    'cache-control': 'no-cache',
+    'content-type': 'application/json',
+    'origin': 'https://arting.ai',
+    'pragma': 'no-cache',
+    'referer': 'https://arting.ai/',
+    'sec-ch-ua': '"Chromium";v="137", "Not/A)Brand";v="24"',
+    'sec-ch-ua-mobile': '?1',
+    'sec-ch-ua-platform': '"Android"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
+    'user-agent': user,
+}
+    
     json_data = {
-        'prompt': prompt,
-        'model_id': 'SDXLFaetastic_v24',
-        'samples': 1,
-        'height': 768,
-        'width': 512,
-        'negative_prompt': 'painting, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, skinny, glitchy, double torso, extra arms, extra hands, mangled fingers, missing lips, ugly face, distorted face, extra legs, anime',
-        'seed': -1,
-        'lora_ids': '',
-        'lora_weight': '0.7',
-        'sampler': 'Euler a',
-        'steps': 20,
-        'guidance': 7,
-        'clip_skip': 2,
-        'is_nsfw': False,
-    }
+    'prompt': promt,
+    'model_id': 'maturemalemix_v14',
+    'samples': 1,
+    'height': 768,
+    'width': 512,
+    'negative_prompt': 'painting, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, skinny, glitchy, double torso, extra arms, extra hands, mangled fingers, missing lips, ugly face, distorted face, extra legs, anime',
+    'seed': -1,
+    'lora_ids': '',
+    'lora_weight': '0.7',
+    'sampler': 'Euler a',
+    'steps': 48,
+    'guidance': 7,
+    'clip_skip': 2,
+    'is_nsfw': True,
+}
 
     try:
         # Step 1: Request to generate
