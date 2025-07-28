@@ -4,6 +4,8 @@ import random
 import string
 import time
 import base64
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 
@@ -32,7 +34,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text to Photo Generator</title>
+    <title>AI Image Generator</title>
     <style>
         * {
             margin: 0;
@@ -44,23 +46,55 @@ HTML_TEMPLATE = """
             background: #1a1a1a;
             color: #ffffff;
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
-        .container {
-            max-width: 700px;
-            width: 100%;
-            text-align: center;
+        .main-container {
+            max-width: 1000px;
+            margin: 0 auto;
         }
         h1 {
             font-size: 2.5rem;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
             background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            text-align: center;
+        }
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            gap: 10px;
+        }
+        .tab {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            padding: 12px 25px;
+            border-radius: 25px;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border-color: transparent;
+        }
+        .tab:hover {
+            border-color: #4ecdc4;
+        }
+        .generator-section {
+            display: none;
+            max-width: 700px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .generator-section.active {
+            display: block;
+        }
+        .section-title {
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            color: #4ecdc4;
         }
         .input-group {
             margin-bottom: 20px;
@@ -118,6 +152,12 @@ HTML_TEMPLATE = """
             transform: none;
             box-shadow: none;
         }
+        .realistic-btn {
+            background: linear-gradient(45deg, #e74c3c, #f39c12);
+        }
+        .realistic-btn:hover {
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
         .loader {
             display: none;
             border: 5px solid #2a2a2a;
@@ -138,7 +178,7 @@ HTML_TEMPLATE = """
             font-size: 1.1rem;
             display: none;
         }
-        #result {
+        .result {
             margin-top: 20px;
             display: none;
         }
@@ -172,14 +212,45 @@ HTML_TEMPLATE = """
             padding: 12px 30px;
             margin: 10px;
         }
+        .unlimited-badge {
+            background: linear-gradient(45deg, #e74c3c, #f39c12);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+            display: inline-block;
+        }
+        .warning-badge {
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            margin-left: 8px;
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
         footer {
             margin-top: 30px;
             font-size: 0.9rem;
             color: #888;
+            text-align: center;
         }
         @media (max-width: 600px) {
             h1 {
                 font-size: 2rem;
+            }
+            .tabs {
+                flex-direction: column;
+                align-items: center;
+            }
+            .tab {
+                width: 200px;
+                text-align: center;
             }
             textarea {
                 height: 80px;
@@ -198,88 +269,180 @@ HTML_TEMPLATE = """
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Text to Photo Generator</h1>
+    <div class="main-container">
+        <h1>AI Image Generator</h1>
         
-        <div class="input-group">
-            <textarea id="prompt" placeholder="Enter your image prompt (e.g., A futuristic city at night)"></textarea>
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('arting')">Uncensored Image Gen <span class="unlimited-badge">⚠️ May Be Harmful</span></div>
+            <div class="tab" onclick="switchTab('realistic')">Realistic Gen <span class="unlimited-badge">🚀 Unlimited + Fast</span></div>
         </div>
         
-        <div class="input-group">
-            <label for="imageCount" style="display: block; margin-bottom: 10px; color: #4ecdc4;">Number of Images:</label>
-            <input type="number" id="imageCount" class="number-input" min="1" max="5" value="1" placeholder="1-5 images">
+        <!-- Uncensored AI Section -->
+        <div id="arting" class="generator-section active">
+            <div class="section-title">Uncensored Image Generator ⚠️</div>
+            
+            <div class="input-group">
+                <textarea id="prompt1" placeholder="Enter your image prompt (e.g., A futuristic city at night) - No content restrictions"></textarea>
+            </div>
+            
+            <div class="input-group">
+                <label for="imageCount1" style="display: block; margin-bottom: 10px; color: #ff6b6b;">Number of Images (Max 5):</label>
+                <input type="number" id="imageCount1" class="number-input" min="1" max="5" value="1" placeholder="1-5 images">
+            </div>
+            
+            <button class="btn" onclick="generateImages('arting')">Generate Uncensored Images</button>
+            
+            <div class="loader" id="loader1"></div>
+            <div class="progress" id="progress1"></div>
+            
+            <div id="result1" class="result">
+                <div class="image-container" id="imageContainer1"></div>
+                <button class="btn download-all-btn" onclick="downloadAllImages('arting')">Download All</button>
+                <button class="btn" onclick="resetForm('arting')">Generate Again</button>
+            </div>
         </div>
         
-        <button class="btn" onclick="generateImages()">Generate Images</button>
-        
-        <div class="loader" id="loader"></div>
-        <div class="progress" id="progress"></div>
-        
-        <div id="result">
-            <div class="image-container" id="imageContainer"></div>
-            <button class="btn download-all-btn" onclick="downloadAllImages()">Download All</button>
-            <button class="btn" onclick="resetForm()">Generate Again</button>
+        <!-- Realistic AI Section -->
+        <div id="realistic" class="generator-section">
+            <div class="section-title">Realistic Image Generator 🚀 <span class="unlimited-badge">Unlimited + Parallel Processing</span></div>
+            
+            <div class="input-group">
+                <textarea id="prompt2" placeholder="Enter your realistic image prompt (e.g., A professional portrait of a woman in business attire)"></textarea>
+            </div>
+            
+            <div class="input-group">
+                <label for="imageCount2" style="display: block; margin-bottom: 10px; color: #e74c3c;">Number of Images (Unlimited - Fast Parallel Generation):</label>
+                <input type="number" id="imageCount2" class="number-input" min="1" max="100" value="1" placeholder="Any number">
+            </div>
+            
+            <button class="btn realistic-btn" onclick="generateImages('realistic')">Generate Realistic Images (Parallel)</button>
+            
+            <div class="loader" id="loader2"></div>
+            <div class="progress" id="progress2"></div>
+            
+            <div id="result2" class="result">
+                <div class="image-container" id="imageContainer2"></div>
+                <button class="btn download-all-btn" onclick="downloadAllImages('realistic')">Download All</button>
+                <button class="btn realistic-btn" onclick="resetForm('realistic')">Generate Again</button>
+            </div>
         </div>
         
         <footer>Created by Adarsh Bhai</footer>
     </div>
 
     <script>
-        let generatedImages = [];
+        let generatedImagesArting = [];
+        let generatedImagesRealistic = [];
 
-        async function generateImages() {
-            const prompt = document.getElementById('prompt').value.trim();
-            const imageCount = parseInt(document.getElementById('imageCount').value) || 1;
+        function switchTab(tabName) {
+            // Remove active class from all tabs and sections
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.generator-section').forEach(section => section.classList.remove('active'));
+            
+            // Add active class to clicked tab and corresponding section
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        async function generateImages(type) {
+            const promptId = type === 'arting' ? 'prompt1' : 'prompt2';
+            const countId = type === 'arting' ? 'imageCount1' : 'imageCount2';
+            const loaderId = type === 'arting' ? 'loader1' : 'loader2';
+            const progressId = type === 'arting' ? 'progress1' : 'progress2';
+            const resultId = type === 'arting' ? 'result1' : 'result2';
+            const containerId = type === 'arting' ? 'imageContainer1' : 'imageContainer2';
+            
+            const prompt = document.getElementById(promptId).value.trim();
+            const imageCount = parseInt(document.getElementById(countId).value) || 1;
             
             if (!prompt) {
                 alert('Please enter a prompt!');
                 return;
             }
 
-            if (imageCount < 1 || imageCount > 5) {
-                alert('Please select between 1-5 images!');
+            if (type === 'arting' && (imageCount < 1 || imageCount > 5)) {
+                alert('Please select between 1-5 images for Arting AI!');
                 return;
             }
 
-            const loader = document.getElementById('loader');
-            const result = document.getElementById('result');
-            const progress = document.getElementById('progress');
-            const generateBtn = document.querySelector('.btn[onclick="generateImages()"]');
-            const imageContainer = document.getElementById('imageContainer');
+            if (type === 'realistic' && (imageCount < 1 || imageCount > 100)) {
+                alert('Please select between 1-100 images for Realistic Gen!');
+                return;
+            }
+
+            const loader = document.getElementById(loaderId);
+            const result = document.getElementById(resultId);
+            const progress = document.getElementById(progressId);
+            const generateBtn = event.target;
+            const imageContainer = document.getElementById(containerId);
             
             loader.style.display = 'block';
             progress.style.display = 'block';
             result.style.display = 'none';
             generateBtn.disabled = true;
             imageContainer.innerHTML = '';
-            generatedImages = [];
+            
+            if (type === 'arting') {
+                generatedImagesArting = [];
+            } else {
+                generatedImagesRealistic = [];
+            }
 
             try {
-                for (let i = 0; i < imageCount; i++) {
-                    progress.textContent = `Generating image ${i + 1} of ${imageCount}...`;
+                if (type === 'realistic') {
+                    // Parallel generation for realistic images
+                    progress.textContent = `Starting parallel generation of ${imageCount} images...`;
                     
-                    const response = await fetch('/generate', {
+                    const endpoint = '/generate_realistic_batch';
+                    const response = await fetch(endpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt })
+                        body: JSON.stringify({ prompt, count: imageCount })
                     });
                     
                     const data = await response.json();
                     
-                    if (data.imageUrl) {
-                        generatedImages.push(data.imageUrl);
-                        addImageToContainer(data.imageUrl, i + 1);
+                    if (data.images && data.images.length > 0) {
+                        generatedImagesRealistic = data.images;
+                        data.images.forEach((imageUrl, index) => {
+                            addImageToContainer(imageUrl, index + 1, containerId);
+                        });
+                        result.style.display = 'block';
+                        progress.textContent = `Successfully generated ${data.images.length} image(s) in parallel!`;
                     } else {
-                        console.error(`Failed to generate image ${i + 1}`);
+                        alert('Failed to generate images. Please try again.');
+                        progress.style.display = 'none';
                     }
-                }
-                
-                if (generatedImages.length > 0) {
-                    result.style.display = 'block';
-                    progress.textContent = `Successfully generated ${generatedImages.length} image(s)!`;
                 } else {
-                    alert('Failed to generate any images. Please try again.');
-                    progress.style.display = 'none';
+                    // Sequential generation for uncensored images
+                    for (let i = 0; i < imageCount; i++) {
+                        progress.textContent = `Generating image ${i + 1} of ${imageCount}...`;
+                        
+                        const endpoint = '/generate';
+                        const response = await fetch(endpoint, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.imageUrl) {
+                            generatedImagesArting.push(data.imageUrl);
+                            addImageToContainer(data.imageUrl, i + 1, containerId);
+                        } else {
+                            console.error(`Failed to generate image ${i + 1}`);
+                        }
+                    }
+                    
+                    if (generatedImagesArting.length > 0) {
+                        result.style.display = 'block';
+                        progress.textContent = `Successfully generated ${generatedImagesArting.length} image(s)!`;
+                    } else {
+                        alert('Failed to generate any images. Please try again.');
+                        progress.style.display = 'none';
+                    }
                 }
                 
             } catch (error) {
@@ -291,8 +454,8 @@ HTML_TEMPLATE = """
             }
         }
 
-        function addImageToContainer(imageUrl, index) {
-            const imageContainer = document.getElementById('imageContainer');
+        function addImageToContainer(imageUrl, index, containerId) {
+            const imageContainer = document.getElementById(containerId);
             
             const imageItem = document.createElement('div');
             imageItem.className = 'image-item';
@@ -317,26 +480,39 @@ HTML_TEMPLATE = """
             document.body.removeChild(link);
         }
 
-        async function downloadAllImages() {
-            if (generatedImages.length === 0) {
+        async function downloadAllImages(type) {
+            const currentImages = type === 'arting' ? generatedImagesArting : generatedImagesRealistic;
+            
+            if (currentImages.length === 0) {
                 alert('No images to download!');
                 return;
             }
 
-            for (let i = 0; i < generatedImages.length; i++) {
+            for (let i = 0; i < currentImages.length; i++) {
                 setTimeout(() => {
-                    downloadSingleImage(generatedImages[i], i + 1);
+                    downloadSingleImage(currentImages[i], i + 1);
                 }, i * 1000); // Delay each download by 1 second
             }
         }
 
-        function resetForm() {
-            document.getElementById('prompt').value = '';
-            document.getElementById('imageCount').value = '1';
-            document.getElementById('result').style.display = 'none';
-            document.getElementById('progress').style.display = 'none';
-            document.getElementById('imageContainer').innerHTML = '';
-            generatedImages = [];
+        function resetForm(type) {
+            const promptId = type === 'arting' ? 'prompt1' : 'prompt2';
+            const countId = type === 'arting' ? 'imageCount1' : 'imageCount2';
+            const resultId = type === 'arting' ? 'result1' : 'result2';
+            const progressId = type === 'arting' ? 'progress1' : 'progress2';
+            const containerId = type === 'arting' ? 'imageContainer1' : 'imageContainer2';
+            
+            document.getElementById(promptId).value = '';
+            document.getElementById(countId).value = '1';
+            document.getElementById(resultId).style.display = 'none';
+            document.getElementById(progressId).style.display = 'none';
+            document.getElementById(containerId).innerHTML = '';
+            
+            if (type === 'arting') {
+                generatedImagesArting = [];
+            } else {
+                generatedImagesRealistic = [];
+            }
         }
     </script>
 </body>
@@ -348,7 +524,7 @@ HTML_TEMPLATE = """
 def index():
     return render_template_string(HTML_TEMPLATE)
 
-# Route to handle image generation
+# Route to handle Arting AI image generation
 @app.route('/generate', methods=['POST'])
 def generate_image():
     try:
@@ -382,7 +558,7 @@ def generate_image():
         }
         
         json_data = {
-            'prompt': prompt,  # Fixed the typo: was 'promt'
+            'prompt': prompt,
             'model_id': 'maturemalemix_v14',
             'samples': 1,
             'height': 768,
@@ -438,6 +614,129 @@ def generate_image():
 
     except Exception as e:
         print(f"Generation error: {str(e)}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+# Function to generate a single realistic image
+def generate_single_realistic_image(prompt):
+    try:
+        gen_url = "https://ai-api.magicstudio.com/api/ai-art-generator"
+        
+        gen_headers = {
+            'origin': 'https://magicstudio.com',
+            'referer': 'https://magicstudio.com/ai-art-generator/',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+            'accept': 'application/json, text/plain, */*',
+        }
+
+        api_data = {
+            'prompt': prompt,
+            'output_format': 'bytes',
+            'anonymous_user_id': '8279e727-5f1a-45ee-ab41-5f1bbdd29e06',
+            'request_timestamp': str(time.time()),
+            'user_is_subscribed': 'false',
+            'client_id': 'pSgX7WgjukXCBoYwDM8G8GLnRRkvAoJlqa5eAVvj95o'
+        }
+
+        # Generate image
+        response = requests.post(gen_url, headers=gen_headers, data=api_data, timeout=30)
+        
+        if response.status_code != 200:
+            return None
+
+        # Upload to 0x0.st to get a URL
+        upload_url = "https://0x0.st"
+        upload_headers = {
+            'User-Agent': 'curl/7.64.1'
+        }
+        files = {
+            'file': ("image.png", response.content)
+        }
+
+        upload = requests.post(upload_url, files=files, headers=upload_headers, timeout=30)
+        
+        if upload.status_code == 200:
+            return upload.text.strip()
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error generating single image: {str(e)}")
+        return None
+# Route to handle batch realistic image generation (parallel)
+@app.route('/generate_realistic_batch', methods=['POST'])
+def generate_realistic_batch():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON data'}), 400
+            
+        prompt = data.get('prompt')
+        count = data.get('count', 1)
+        
+        if not prompt:
+            return jsonify({'error': 'Prompt is required'}), 400
+
+        # Random concurrent requests between 5-10
+        max_concurrent = random.randint(5, 10)
+        print(f"Using {max_concurrent} concurrent threads for {count} images")
+        
+        # Generate images in parallel batches
+        all_images = []
+        
+        # Process in batches if count > max_concurrent
+        for batch_start in range(0, count, max_concurrent):
+            batch_end = min(batch_start + max_concurrent, count)
+            batch_size = batch_end - batch_start
+            
+            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+                # Submit all tasks for this batch
+                futures = [executor.submit(generate_single_realistic_image, prompt) for _ in range(batch_size)]
+                
+                # Collect results as they complete
+                batch_images = []
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        batch_images.append(result)
+                
+                all_images.extend(batch_images)
+                print(f"Batch {batch_start//max_concurrent + 1} completed: {len(batch_images)}/{batch_size} images")
+
+        if all_images:
+            return jsonify({
+                'images': all_images,
+                'total_generated': len(all_images),
+                'requested': count,
+                'concurrent_threads': max_concurrent
+            })
+        else:
+            return jsonify({'error': 'Failed to generate any images'}), 500
+
+    except Exception as e:
+        print(f"Batch generation error: {str(e)}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+# Route to handle single realistic image generation
+@app.route('/generate_realistic', methods=['POST'])
+def generate_realistic_image():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON data'}), 400
+            
+        prompt = data.get('prompt')
+        if not prompt:
+            return jsonify({'error': 'Prompt is required'}), 400
+
+        result = generate_single_realistic_image(prompt)
+        
+        if result:
+            return jsonify({'imageUrl': result})
+        else:
+            return jsonify({'error': 'Failed to generate image'}), 500
+
+    except Exception as e:
+        print(f"Realistic generation error: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 if __name__ == '__main__':
