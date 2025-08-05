@@ -1,4 +1,5 @@
 from flask import Flask, render_template_string, request, jsonify, Response
+from flask_cors import CORS
 import requests
 import random
 import string
@@ -6,8 +7,59 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import re
+import logging
 
 app = Flask(__name__)
+CORS(app, origins=['http://localhost:3000', 'http://127.0.0.1:3000'])  # Configure CORS properly
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Input validation functions
+def validate_prompt(prompt):
+    """Validate and sanitize prompt input"""
+    if not prompt or not isinstance(prompt, str):
+        return False, "Prompt must be a non-empty string"
+    
+    # Remove excessive whitespace
+    prompt = re.sub(r'\s+', ' ', prompt.strip())
+    
+    # Check length
+    if len(prompt) < 3:
+        return False, "Prompt must be at least 3 characters long"
+    if len(prompt) > 500:
+        return False, "Prompt must be less than 500 characters"
+    
+    # Check for potentially harmful content
+    blocked_patterns = [
+        r'<script.*?>.*?</script>',
+        r'javascript:',
+        r'on\w+\s*=',
+        r'<iframe.*?>',
+        r'<object.*?>',
+        r'<embed.*?>'
+    ]
+    
+    for pattern in blocked_patterns:
+        if re.search(pattern, prompt, re.IGNORECASE):
+            return False, "Prompt contains potentially harmful content"
+    
+    return True, prompt
+
+def validate_message(message):
+    """Validate chat message input"""
+    if not message or not isinstance(message, str):
+        return False, "Message must be a non-empty string"
+    
+    message = message.strip()
+    if len(message) < 1:
+        return False, "Message cannot be empty"
+    if len(message) > 1000:
+        return False, "Message must be less than 1000 characters"
+    
+    return True, message
 
 # Helper functions for API
 def generate_user_agent():
@@ -780,18 +832,27 @@ def generate_image():
     try:
         data = request.get_json()
         if not data:
+            logger.warning("Invalid JSON data received")
             return jsonify({'error': 'Invalid JSON data'}), 400
             
         prompt = data.get('prompt')
         if not prompt:
             return jsonify({'error': 'Prompt is required'}), 400
+        
+        # Validate and sanitize prompt
+        is_valid, result = validate_prompt(prompt)
+        if not is_valid:
+            logger.warning(f"Invalid prompt: {result}")
+            return jsonify({'error': result}), 400
+        
+        prompt = result  # Use sanitized prompt
 
         user = generate_user_agent()
         headers = {
             'authority': 'api.arting.ai',
             'accept': 'application/json',
             'accept-language': 'en-US,en;q=0.9',
-            'authorization': '3a2bc631-e77b-4a85-a954-ba9e7bab07e6',
+            'authorization': '3a2bc631-e77b-4a85-a954-ba9e7bab07e6',  # Consider moving to environment variable
             'cache-control': 'no-cache',
             'content-type': 'application/json',
             'origin': 'https://arting.ai',
@@ -878,10 +939,10 @@ def generate_single_realistic_image(prompt):
         api_data = {
             'prompt': prompt,
             'output_format': 'bytes',
-            'anonymous_user_id': '8279e727-5f1a-45ee-ab41-5f1bbdd29e06',
+            'anonymous_user_id': '8279e727-5f1a-45ee-ab41-5f1bbdd29e06',  # Consider moving to environment variable
             'request_timestamp': str(time.time()),
             'user_is_subscribed': 'false',
-            'client_id': 'pSgX7WgjukXCBoYwDM8G8GLnRRkvAoJlqa5eAVvj95o'
+            'client_id': 'pSgX7WgjukXCBoYwDM8G8GLnRRkvAoJlqa5eAVvj95o'  # Consider moving to environment variable
         }
 
         response = requests.post(gen_url, headers=gen_headers, data=api_data, timeout=30)
@@ -963,11 +1024,20 @@ def generate_realistic_image():
     try:
         data = request.get_json()
         if not data:
+            logger.warning("Invalid JSON data received for realistic generation")
             return jsonify({'error': 'Invalid JSON data'}), 400
             
         prompt = data.get('prompt')
         if not prompt:
             return jsonify({'error': 'Prompt is required'}), 400
+        
+        # Validate and sanitize prompt
+        is_valid, result = validate_prompt(prompt)
+        if not is_valid:
+            logger.warning(f"Invalid realistic prompt: {result}")
+            return jsonify({'error': result}), 400
+        
+        prompt = result  # Use sanitized prompt
 
         result = generate_single_realistic_image(prompt)
         
@@ -986,6 +1056,7 @@ def chat():
     try:
         data = request.get_json()
         if not data:
+            logger.warning("Invalid JSON data received for chat")
             return jsonify({'error': 'Invalid JSON data'}), 400
             
         message = data.get('message')
@@ -993,6 +1064,18 @@ def chat():
         
         if not message:
             return jsonify({'error': 'Message is required'}), 400
+        
+        # Validate message
+        is_valid, result = validate_message(message)
+        if not is_valid:
+            logger.warning(f"Invalid chat message: {result}")
+            return jsonify({'error': result}), 400
+        
+        message = result  # Use sanitized message
+        
+        # Validate history if provided
+        if history and not isinstance(history, list):
+            return jsonify({'error': 'History must be a list'}), 400
 
         r = requests.session()
         cookies = {
@@ -1076,4 +1159,10 @@ def chat():
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # For production, set debug=False and use a proper WSGI server
+    import os
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    port = int(os.environ.get('PORT', 5000))
+    
+    logger.info(f"Starting Flask server on port {port} with debug={debug_mode}")
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
