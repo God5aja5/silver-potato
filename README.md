@@ -1,16 +1,15 @@
-# Inovor UI - Image Generation & Chat API
+# Inovor UI - Python Flask API
 
 A Flask-based web application that provides AI image generation and chat functionality.
 
 ## 🐛 Recent Bug Fixes & Improvements
 
 ### Fixed Issues:
-1. **Fixed typo in `index.js`**: Changed "reloded" → "reloaded"
-2. **Added missing `package.json`**: Proper Node.js dependency management
-3. **Fixed `requirements.txt`**: Added version pinning and proper formatting
-4. **Enhanced security**: Added input validation, CORS configuration, and security headers
-5. **Improved error handling**: Better logging and error responses
-6. **Added environment variable support**: Moved hardcoded tokens to environment configuration
+1. **Fixed `requirements.txt`**: Added version pinning and proper formatting
+2. **Enhanced security**: Added input validation, CORS configuration, and security headers
+3. **Improved error handling**: Better logging and error responses
+4. **Added environment variable support**: Moved hardcoded tokens to environment configuration
+5. **Added input validation**: XSS protection and content filtering
 
 ### Security Improvements:
 - ✅ Input validation and sanitization for prompts and messages
@@ -34,21 +33,10 @@ cp .env.example .env
 python img.py
 ```
 
-### Node.js Monitor Service:
-```bash
-# Install dependencies
-npm install
-
-# Start the service
-npm start
-```
-
 ## 📁 Project Structure
 
 - `img.py` - Main Flask application with image generation and chat APIs
-- `index.js` - Node.js service for website monitoring
 - `requirements.txt` - Python dependencies
-- `package.json` - Node.js dependencies
 - `.env.example` - Environment variables template
 - `.gitignore` - Git ignore rules
 
