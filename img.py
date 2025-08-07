@@ -34,7 +34,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Hub - Images & Chat</title>
+    <title>AI Hub - Images, Videos & Chat</title>
     <style>
         * {
             margin: 0;
@@ -182,6 +182,12 @@ HTML_TEMPLATE = """
         .realistic-btn:hover {
             box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
         }
+        .video-btn {
+            background: linear-gradient(45deg, #8e44ad, #3498db);
+        }
+        .video-btn:hover {
+            box-shadow: 0 5px 15px rgba(142, 68, 173, 0.4);
+        }
         .chat-btn {
             background: linear-gradient(45deg, #9b59b6, #e74c3c);
         }
@@ -218,7 +224,13 @@ HTML_TEMPLATE = """
             gap: 20px;
             margin-bottom: 20px;
         }
-        .image-item {
+        .video-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .image-item, .video-item {
             position: relative;
             background: #1a1a1a;
             border-radius: 10px;
@@ -231,8 +243,21 @@ HTML_TEMPLATE = """
             box-shadow: 0 0 20px rgba(78, 205, 196, 0.2);
             margin-bottom: 10px;
         }
+        .generated-video {
+            width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(142, 68, 173, 0.2);
+            margin-bottom: 10px;
+            background: #000;
+        }
         .download-btn {
             background: linear-gradient(45deg, #4ecdc4, #45b7b8);
+            padding: 8px 20px;
+            font-size: 0.9rem;
+            margin: 5px;
+        }
+        .download-video-btn {
+            background: linear-gradient(45deg, #8e44ad, #3498db);
             padding: 8px 20px;
             font-size: 0.9rem;
             margin: 5px;
@@ -404,7 +429,7 @@ HTML_TEMPLATE = """
             .number-input {
                 width: 150px;
             }
-            .image-container {
+            .image-container, .video-container {
                 grid-template-columns: 1fr;
             }
             .chat-container {
@@ -419,12 +444,13 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="main-container">
-        <h1>🚀 AI Hub - Images & Chat</h1>
+        <h1>🚀 AI Hub - Images, Videos & Chat</h1>
         
         <!-- Tabs -->
         <div class="tabs">
             <div class="tab active" onclick="switchTab('arting')">Uncensored Image Gen <span class="warning-badge">⚠️ May Be Harmful</span></div>
             <div class="tab" onclick="switchTab('realistic')">Realistic Gen <span class="unlimited-badge">🚀 Unlimited + Fast</span></div>
+            <div class="tab" onclick="switchTab('video')">Text to Video <span class="unlimited-badge">🎬 Multi-threaded</span></div>
             <div class="tab" onclick="switchTab('chatbot')">AI Chatbot <span class="unlimited-badge">💬 Smart Assistant</span></div>
         </div>
         
@@ -478,6 +504,31 @@ HTML_TEMPLATE = """
             </div>
         </div>
         
+        <!-- Text to Video Section -->
+        <div id="video" class="generator-section">
+            <div class="section-title">Text to Video Generator 🎬 <span class="unlimited-badge">Unlimited + Multi-threaded</span></div>
+            
+            <div class="input-group">
+                <textarea id="prompt3" placeholder="Enter your video prompt (e.g., A boy walking in the park, A sunset over mountains)"></textarea>
+            </div>
+            
+            <div class="input-group">
+                <label for="videoCount" style="display: block; margin-bottom: 10px; color: #8e44ad;">Number of Videos (Unlimited - Multi-threaded Generation):</label>
+                <input type="number" id="videoCount" class="number-input" min="1" max="100" value="1" placeholder="Any number">
+            </div>
+            
+            <button class="btn video-btn" onclick="generateVideos()">Generate Videos (Multi-threaded)</button>
+            
+            <div class="loader" id="loader3"></div>
+            <div class="progress" id="progress3"></div>
+            
+            <div id="result3" class="result">
+                <div class="video-container" id="videoContainer"></div>
+                <button class="btn download-all-btn" onclick="downloadAllVideos()">Download All Videos</button>
+                <button class="btn video-btn" onclick="resetForm('video')">Generate Again</button>
+            </div>
+        </div>
+        
         <!-- Chatbot Section -->
         <div id="chatbot" class="generator-section">
             <div class="section-title">AI Chatbot Assistant 💬</div>
@@ -511,6 +562,7 @@ HTML_TEMPLATE = """
     <script>
         let generatedImagesArting = [];
         let generatedImagesRealistic = [];
+        let generatedVideos = [];
         let chatHistory = [];
 
         function switchTab(tabName) {
@@ -628,6 +680,65 @@ HTML_TEMPLATE = """
             }
         }
 
+        async function generateVideos() {
+            const prompt = document.getElementById('prompt3').value.trim();
+            const videoCount = parseInt(document.getElementById('videoCount').value) || 1;
+            
+            if (!prompt) {
+                alert('Please enter a video prompt!');
+                return;
+            }
+
+            if (videoCount < 1 || videoCount > 100) {
+                alert('Please select between 1-100 videos!');
+                return;
+            }
+
+            const loader = document.getElementById('loader3');
+            const result = document.getElementById('result3');
+            const progress = document.getElementById('progress3');
+            const generateBtn = event.target;
+            const videoContainer = document.getElementById('videoContainer');
+            
+            loader.style.display = 'block';
+            progress.style.display = 'block';
+            result.style.display = 'none';
+            generateBtn.disabled = true;
+            videoContainer.innerHTML = '';
+            generatedVideos = [];
+
+            try {
+                progress.textContent = `Starting multi-threaded generation of ${videoCount} video(s)...`;
+                
+                const response = await fetch('/generate_videos_batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, count: videoCount })
+                });
+                
+                const data = await response.json();
+                
+                if (data.videos && data.videos.length > 0) {
+                    generatedVideos = data.videos;
+                    data.videos.forEach((videoUrl, index) => {
+                        addVideoToContainer(videoUrl, index + 1);
+                    });
+                    result.style.display = 'block';
+                    progress.textContent = `Successfully generated ${data.videos.length} video(s) using multi-threading!`;
+                } else {
+                    alert('Failed to generate videos. Please try again.');
+                    progress.style.display = 'none';
+                }
+                
+            } catch (error) {
+                alert('Error: ' + error.message);
+                progress.style.display = 'none';
+            } finally {
+                loader.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        }
+
         function addImageToContainer(imageUrl, index, containerId) {
             const imageContainer = document.getElementById(containerId);
             
@@ -644,10 +755,39 @@ HTML_TEMPLATE = """
             imageContainer.appendChild(imageItem);
         }
 
+        function addVideoToContainer(videoUrl, index) {
+            const videoContainer = document.getElementById('videoContainer');
+            
+            const videoItem = document.createElement('div');
+            videoItem.className = 'video-item';
+            
+            videoItem.innerHTML = `
+                <video controls class="generated-video">
+                    <source src="${videoUrl}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                <button class="btn download-video-btn" onclick="downloadSingleVideo('${videoUrl}', ${index})">
+                    Download Video ${index}
+                </button>
+            `;
+            
+            videoContainer.appendChild(videoItem);
+        }
+
         function downloadSingleImage(imageUrl, index) {
             const link = document.createElement('a');
             link.href = imageUrl;
             link.download = `generated_image_${index}.png`;
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadSingleVideo(videoUrl, index) {
+            const link = document.createElement('a');
+            link.href = videoUrl;
+            link.download = `generated_video_${index}.mp4`;
             link.target = '_blank';
             document.body.appendChild(link);
             link.click();
@@ -669,7 +809,30 @@ HTML_TEMPLATE = """
             }
         }
 
+        async function downloadAllVideos() {
+            if (generatedVideos.length === 0) {
+                alert('No videos to download!');
+                return;
+            }
+
+            for (let i = 0; i < generatedVideos.length; i++) {
+                setTimeout(() => {
+                    downloadSingleVideo(generatedVideos[i], i + 1);
+                }, i * 1000);
+            }
+        }
+
         function resetForm(type) {
+            if (type === 'video') {
+                document.getElementById('prompt3').value = '';
+                document.getElementById('videoCount').value = '1';
+                document.getElementById('result3').style.display = 'none';
+                document.getElementById('progress3').style.display = 'none';
+                document.getElementById('videoContainer').innerHTML = '';
+                generatedVideos = [];
+                return;
+            }
+
             const promptId = type === 'arting' ? 'prompt1' : 'prompt2';
             const countId = type === 'arting' ? 'imageCount1' : 'imageCount2';
             const resultId = type === 'arting' ? 'result1' : 'result2';
@@ -907,6 +1070,75 @@ def generate_single_realistic_image(prompt):
     except Exception as e:
         print(f"Error generating single image: {str(e)}")
         return None
+
+# Function to generate a single video
+def generate_single_video(prompt):
+    try:
+        api_base = "https://api.yabes-desu.workers.dev/ai/tool/txt2video"
+        params = {"prompt": prompt}
+
+        response = requests.get(api_base, params=params, timeout=60)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get("success") and "url" in data:
+            return data["url"]
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Error generating single video: {str(e)}")
+        return None
+
+# Route to handle batch video generation (multi-threaded)
+@app.route('/generate_videos_batch', methods=['POST'])
+def generate_videos_batch():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Invalid JSON data'}), 400
+            
+        prompt = data.get('prompt')
+        count = data.get('count', 1)
+        
+        if not prompt:
+            return jsonify({'error': 'Prompt is required'}), 400
+
+        max_concurrent = min(random.randint(3, 8), count)
+        print(f"Using {max_concurrent} concurrent threads for {count} videos")
+        
+        all_videos = []
+        
+        for batch_start in range(0, count, max_concurrent):
+            batch_end = min(batch_start + max_concurrent, count)
+            batch_size = batch_end - batch_start
+            
+            with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+                futures = [executor.submit(generate_single_video, prompt) for _ in range(batch_size)]
+                
+                batch_videos = []
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        batch_videos.append(result)
+                
+                all_videos.extend(batch_videos)
+                print(f"Batch {batch_start//max_concurrent + 1} completed: {len(batch_videos)}/{batch_size} videos")
+
+        if all_videos:
+            return jsonify({
+                'videos': all_videos,
+                'total_generated': len(all_videos),
+                'requested': count,
+                'concurrent_threads': max_concurrent
+            })
+        else:
+            return jsonify({'error': 'Failed to generate any videos'}), 500
+
+    except Exception as e:
+        print(f"Batch video generation error: {str(e)}")
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 # Route to handle batch realistic image generation (parallel)
 @app.route('/generate_realistic_batch', methods=['POST'])
